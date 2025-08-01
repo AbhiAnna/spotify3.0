@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Custom Playlist – Spotify-style</title>
+
+  <!-- Inter font -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet" />
+  <!-- Confetti (MIT, tiny) -->
+  <script defer src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+  <style>
+  /* -------------- variables & base -------------- */
+  :root{
+    --bg-dark:#121212;
+    --bg-light:#181818;
+    --bg-hover:#282828;
+    --accent:#1db954;
+    --text-primary:#fff;
+    --text-secondary:#b3b3b3;
+  }
+  *{box-sizing:border-box;margin:0}
+  body{
+    font-family:"Inter",system-ui,sans-serif;
+    color:var(--text-primary);
+    background:var(--bg-dark);
+    display:flex;
+    flex-direction:column;
+    height:100vh;
+    overflow:hidden;
+  }
+  /* …———— existing CSS unchanged ————… */
+  /* (kept exactly as you had it) */
+  /* ---------- Intro gate ---------- */
+  #introScreen{position:fixed;inset:0;z-index:999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:24px;background:var(--bg-dark);transition:opacity .8s ease,transform .8s ease;}
+  #introScreen.hide{opacity:0;pointer-events:none;transform:scale(1.1)}
+  #introScreen.grand{animation:grandExit 1.4s ease-in-out forwards}
+  @keyframes grandExit{0%{opacity:1;transform:scale(1) rotate(0deg)}70%{opacity:1;transform:scale(5) rotate(270deg)}100%{opacity:0;transform:scale(20) rotate(720deg)}}
+  #introScreen h1{font-size:clamp(28px,5vw,48px)}
+  #introScreen input{padding:12px 16px;border:2px solid var(--accent);border-radius:6px;background:var(--bg-light);color:var(--text-primary);font-size:18px;min-width:240px;}
+  #introScreen button{padding:12px 20px;border:none;border-radius:6px;font-size:18px;font-weight:600;background:var(--accent);color:#000;cursor:pointer;transition:filter .2s;}
+  #introScreen button:hover{filter:brightness(1.1)}
+  /* ---------- Birthday banner ---------- */
+  #birthdayBanner{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.85);color:var(--accent);font-weight:700;font-size:clamp(32px,6vw,72px);letter-spacing:2px;text-align:center;padding:0 20px;opacity:0;transform:scale(.8);z-index:1000;pointer-events:none;transition:opacity .6s,transform .6s;}
+  #birthdayBanner.show{opacity:1;transform:scale(1)}
+  #birthdayBanner.hide{opacity:0;transform:scale(1.3);transition:opacity .8s,transform .8s}
+  /* ---------- Layout ---------- */
+  .layout{flex:1;display:flex;overflow:hidden}
+  /* Sidebar */
+  aside{width:240px;background:var(--bg-light);padding:24px 16px;display:flex;flex-direction:column;gap:24px;}
+  .logo{font-size:24px;font-weight:700}
+  nav ul{list-style:none;display:flex;flex-direction:column;gap:12px;padding:0}
+  nav li{cursor:pointer;padding:8px 12px;border-radius:4px;color:var(--text-secondary);transition:background .2s,color .2s;}
+  nav li:hover,nav li.active{background:var(--bg-hover);color:var(--text-primary)}
+  /* Main */
+  main{flex:1;overflow-y:auto}
+  header.playlist-header{display:flex;gap:24px;padding:32px;background:linear-gradient(0deg,rgba(0,0,0,.4),rgba(0,0,0,.6)),url("https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=700&q=80") center/cover;align-items:end;}
+  header .cover{width:160px;height:160px;background:var(--bg-light);box-shadow:0 4px 20px rgba(0,0,0,.5);object-fit:cover;flex-shrink:0;}
+  header .meta{display:flex;flex-direction:column;gap:8px}
+  .meta .type{font-size:12px;font-weight:500;color:var(--text-secondary);text-transform:uppercase;}
+  .meta h1{font-size:48px;margin:0}
+  .meta .desc{font-size:14px;color:var(--text-secondary)}
+  /* Controls */
+  .controls{display:flex;align-items:center;gap:24px;padding:24px 32px;position:sticky;top:0;background:var(--bg-dark);border-bottom:1px solid var(--bg-hover);z-index:2;}
+  .play-btn{width:56px;height:56px;border-radius:50%;background:var(--accent);border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:transform .2s;}
+  .play-btn:hover{transform:scale(1.05)}
+  .play-btn svg{pointer-events:none}
+  .play-btn .icon-pause{display:none}
+  .play-btn.is-playing .icon-play{display:none}
+  .play-btn.is-playing .icon-pause{display:block}
+  .add-btn{background:none;border:none;color:var(--text-secondary);cursor:pointer;font-size:24px;transition:color .2s;}
+  .add-btn:hover{color:var(--text-primary)}
+  /* Tracklist */
+  table.tracklist{width:100%;border-collapse:collapse;min-width:600px}
+  thead th{text-align:left;padding:12px 32px;font-size:12px;font-weight:500;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.04em;}
+  tbody tr{transition:background .2s;cursor:pointer}
+  tbody tr:hover,tbody tr.playing{background:var(--bg-hover)}
+  tbody td{padding:12px 32px;font-size:14px;vertical-align:middle}
+  tbody td:first-child{color:var(--text-secondary);width:24px}
+  tbody td.duration{text-align:right}
+  /* Modal & audio bar (unchanged) */
+  dialog{border:none;border-radius:8px;background:var(--bg-light);color:var(--text-primary);padding:24px;box-shadow:0 8px 32px rgba(0,0,0,.6);}
+  dialog::backdrop{background:rgba(0,0,0,.6)}
+  dialog form{display:flex;flex-direction:column;gap:16px}
+  dialog input{padding:10px 12px;background:var(--bg-dark);border:1px solid var(--bg-hover);border-radius:4px;color:var(--text-primary);}
+  dialog button{padding:10px 14px;border:none;background:var(--accent);border-radius:4px;font-weight:600;cursor:pointer;color:#000;}
+  dialog .cancel{background:transparent;color:var(--text-secondary)}
+  #audioBar{display:none}
+  </style>
+</head>
+<body>
+
+  <!-- ---------- Intro gate ---------- -->
+  <section id="introScreen">
+    <h1>Welcome! Enter your first name</h1>
+    <input id="nameInput" type="text" placeholder="First name…" autocomplete="given-name" />
+    <button id="enterBtn">Continue →</button>
+  </section>
+
+  <!-- Birthday overlay -->
+  <div id="birthdayBanner">🎉 Happy 21<sup>st</sup> Birthday, Maha! 🎉</div>
+
+  <!-- ---------- App ---------- -->
+  <div class="layout">
+    <aside>
+      <div class="logo">Maha Tunes</div>
+      <nav>
+        <ul>
+          <li class="active">Home</li>
+        </ul>
+      </nav>
+    </aside>
+
+    <main>
+      <header class="playlist-header">
+        <img class="cover" src="pic.png" alt="Playlist cover">
+        <div class="meta">
+          <span class="type">Playlist</span>
+          <h1>Maha's Mix</h1>
+          <p class="desc">Happy Birthday Pooks! Click Play</p>
+        </div>
+      </header>
+
+      <div class="controls">
+        <button class="play-btn" id="mainPlayBtn" title="Play / Pause">
+          <svg class="icon-play"  width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M5 3L19 12L5 21V3Z"/></svg>
+          <svg class="icon-pause" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M6 4h4v16H6zM14 4h4v16h-4z"/></svg>
+        </button>
+        <button class="add-btn" id="openAddSong" title="Add song">＋</button>
+      </div>
+
+      <!-- ---------- Default track list ---------- -->
+      <table class="tracklist" id="trackTable">
+        <thead>
+          <tr><th>#</th><th>Title</th><th>Artist</th><th class="duration">Length</th></tr>
+        </thead> 
+        <tbody>
+          <!-- Demo seeds (remove if not needed) -->
+          <!-- Your requested tracks -->
+          <tr data-src="golden.mp3">    <td>1</td><td>Golden</td><td>–</td><td class="duration">1:18</td></tr>
+          <tr data-src="go.mp3">        <td>2</td><td>In Da Club</td><td>–</td><td class="duration">0:38</td></tr>
+          <tr data-src="505.mp3">       <td>3</td><td>505</td><td>–</td><td class="duration">1:54</td></tr>
+          <tr data-src="oosuopud.mp3">  <td>4</td><td>Oosupudu</td><td>–</td><td class="duration">0:53</td></tr>
+          <tr data-src="girlBlunt.mp3"> <td>5</td><td>Girl Blunt</td><td>–</td><td class="duration">1:04</td></tr>
+        </tbody>
+      </table>
+    </main>
+  </div>
+
+  <!-- Hidden audio element -->
+  <footer id="audioBar">
+    <audio id="audioPlayer" preload="none"></audio>
+  </footer>
+
+  <!-- ---------- Add Song Modal ---------- -->
+  <dialog id="addSongDialog">
+    <form id="addSongForm" method="dialog">
+      <h2>Add a New Song</h2>
+      <input id="songTitle"  type="text" placeholder="Song title" required />
+      <input id="songArtist" type="text" placeholder="Artist"      required />
+      <input id="songLength" type="text" placeholder="Length (mm:ss)" pattern="\\d{1,2}:\\d{2}" required />
+      <input id="songURL"    type="url"  placeholder="Audio URL (mp3/ogg)" required />
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button type="submit">Add</button>
+        <button type="button" class="cancel" id="cancelDialog">Cancel</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script>
+  /* ---------- Intro gate & birthday ---------- */
+  const intro = document.getElementById('introScreen');
+  const banner = document.getElementById('birthdayBanner');
+  const nameInput = document.getElementById('nameInput');
+  const enterBtn = document.getElementById('enterBtn');
+
+  enterBtn.addEventListener('click', handleEnter);
+  nameInput.addEventListener('keydown', e => { if (e.key === 'Enter') handleEnter(); });
+
+  function handleEnter() {
+    const name = nameInput.value.trim();
+    if (!name) { nameInput.focus(); return; }
+
+    if (name.toLowerCase() === 'maha') {
+      celebrateBirthday();
+    } else {
+      intro.classList.add('hide');
+      setTimeout(() => intro.style.display = 'none', 800);
+    }
+  }
+
+  function celebrateBirthday() {
+    banner.classList.add('show');
+    fireConfetti(2200);
+    setTimeout(() => banner.classList.add('hide'), 2500);
+    setTimeout(() => {
+      intro.classList.add('grand');
+      fireConfetti(1400);
+    }, 3100);
+    setTimeout(() => { intro.style.display = 'none'; banner.remove(); }, 4600);
+  }
+
+  function fireConfetti(duration = 2000) {
+    const end = Date.now() + duration;
+    const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 1000 };
+    const interval = setInterval(() => {
+      const timeLeft = end - Date.now();
+      if (timeLeft <= 0) { clearInterval(interval); return; }
+      const count = Math.round(150 * (timeLeft / duration));
+      confetti({ ...defaults, particleCount: count, origin: { x: Math.random(), y: Math.random() - 0.2 } });
+    }, 250);
+  }
+
+  /* ---------- Player & playlist ---------- */
+  const tableBody   = document.querySelector('#trackTable tbody');
+  const audioPlayer = document.getElementById('audioPlayer');
+  const mainPlayBtn = document.getElementById('mainPlayBtn');
+
+  const dialog      = document.getElementById('addSongDialog');
+  const openBtn     = document.getElementById('openAddSong');
+  const cancelBtn   = document.getElementById('cancelDialog');
+  const form        = document.getElementById('addSongForm');
+
+  let currentRow = null;
+
+  function playRow(row) {
+    if (!row?.dataset.src) return;
+    if (currentRow) currentRow.classList.remove('playing');
+    currentRow = row;
+    currentRow.classList.add('playing');
+    audioPlayer.src = row.dataset.src;
+    audioPlayer.play().catch(() => {});
+    syncMainPlayIcon();
+  }
+
+  /* Main play / pause button */
+  mainPlayBtn.addEventListener('click', () => {
+    if (currentRow) {
+      audioPlayer.paused ? audioPlayer.play() : audioPlayer.pause();
+    } else {
+      const first = tableBody.querySelector('tr');
+      if (first) playRow(first);
+    }
+  });
+
+  /* Keep icon in sync */
+  function syncMainPlayIcon() {
+    audioPlayer.paused
+      ? mainPlayBtn.classList.remove('is-playing')
+      : mainPlayBtn.classList.add('is-playing');
+  }
+  audioPlayer.addEventListener('play',  syncMainPlayIcon);
+  audioPlayer.addEventListener('pause', syncMainPlayIcon);
+  audioPlayer.addEventListener('ended', syncMainPlayIcon);
+
+  /* Row click */
+  tableBody.addEventListener('click', e => {
+    const row = e.target.closest('tr');
+    if (row) playRow(row);
+  });
+
+  /* Add-song dialog */
+  openBtn.addEventListener('click', () => dialog.showModal());
+  cancelBtn.addEventListener('click', () => dialog.close());
+
+  form.addEventListener('submit', e => {
+    e.preventDefault();
+    const title  = document.getElementById('songTitle').value.trim();
+    const artist = document.getElementById('songArtist').value.trim();
+    const length = document.getElementById('songLength').value.trim();
+    const url    = document.getElementById('songURL').value.trim();
+    if (!title || !artist || !length || !url) return;
+
+    const index = tableBody.children.length + 1;
+    const row = document.createElement('tr');
+    row.dataset.src = url;
+    row.innerHTML   = `<td>${index}</td><td>${title}</td><td>${artist}</td><td class="duration">${length}</td>`;
+    tableBody.appendChild(row);
+    dialog.close(); form.reset();
+  });
+
+  /* Auto-advance */
+  audioPlayer.addEventListener('ended', () => {
+    if (!currentRow) return;
+    const next = currentRow.nextElementSibling;
+    if (next) playRow(next); else currentRow.classList.remove('playing');
+  });
+  </script>
+</body>
+</html>
